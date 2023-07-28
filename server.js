@@ -23,10 +23,65 @@ app.use(bodyParser.urlencoded({ extended: true }));
 const API_PATHS = {
   getTopItems: (type = "tracks") => `v1/me/top/${type}`,
   getRecommendedTracks: "v1/recommendations",
+  getTracksByArtistID: (artistID) =>
+    `v1/artists/${artistID}/top-tracks?market=ES`,
 };
 
 const API_INSTANCE = axios.create({
   baseURL: "https://api.spotify.com/",
+});
+
+async function getRecommendedTracks(token, trackIDs) {
+  console.log("Fectching Tracks: ", trackIDs);
+  // Endpoint reference : https://developer.spotify.com/documentation/web-api/reference/get-users-top-artists-and-tracks
+  return API_INSTANCE.get(API_PATHS.getRecommendedTracks, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    params: { seed_tracks: trackIDs.join(","), limit: 20 },
+  });
+}
+
+async function getArtistTracks(token, artistID) {
+  console.log("Fectching Tracks for artist: ", artistID);
+  // Endpoint reference : https://developer.spotify.com/documentation/web-api/reference/get-users-top-artists-and-tracks
+  return API_INSTANCE.get(API_PATHS.getTracksByArtistID(artistID), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    // params: { seed_tracks: trackIDs.join(","), limit: 20 },
+  });
+}
+
+async function fetchArtists(token, artistID) {
+  console.log("Fectching Tracks for artist: ", artistID);
+  // Endpoint reference : https://developer.spotify.com/documentation/web-api/reference/get-users-top-artists-and-tracks
+  return API_INSTANCE.get(API_PATHS.getTracksByArtistID(artistID), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    // params: { seed_tracks: trackIDs.join(","), limit: 20 },
+  });
+}
+
+app.get("/tracks/artists", (req, res) => {
+  try {
+    console.log("Fetching artist tracks");
+    const artistID = req.query.artistID;
+    // const tracks = trackIDs?.split(",");
+    const accessToken = req.query.accessToken;
+    console.log("Access token for recommend: " + accessToken);
+    console.log("Artist ID: ", artistID);
+    getArtistTracks(accessToken, artistID).then((response) => {
+      // console.log("received data", data);
+      // console.log(response.data);
+      // return { data: data };
+      res.json(response.data);
+    });
+  } catch (e) {
+    // console.log("Error: " + e);
+    res.send({ data: null });
+  }
 });
 
 app.post("/refresh", (req, res) => {
@@ -90,20 +145,9 @@ async function getTopItems(_token, itemType) {
       Authorization: `Bearer ${_token}`,
     },
     params: {
-      limit: 5,
+      limit: 10,
       time_range: "short_term",
     },
-  });
-}
-
-async function getRecommendedTracks(token, trackIDs) {
-  console.log("Fectching Tracks: ", trackIDs);
-  // Endpoint reference : https://developer.spotify.com/documentation/web-api/reference/get-users-top-artists-and-tracks
-  return API_INSTANCE.get(API_PATHS.getRecommendedTracks, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    params: { seed_tracks: trackIDs.join(","), limit: 50 },
   });
 }
 
@@ -111,7 +155,11 @@ app.post("/recommend", (req, res) => {
   try {
     console.log("Fetching recommendations");
     const trackIDs = req.body.trackIDs;
-    const tracks = trackIDs?.split(",");
+    let tracks = trackIDs?.split(",");
+    if (tracks.length > 5) {
+      tracks = tracks.slice(0, 5);
+    }
+    console.log("Tracks are: " + JSON.stringify(tracks));
     const accessToken = req.query.accessToken;
     console.log("Access token for recommend: " + accessToken);
     // console.log("Tracks: ", trackIDs);
