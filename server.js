@@ -23,6 +23,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 const API_PATHS = {
   getTopItems: (type = "tracks") => `v1/me/top/${type}`,
   getRecommendedTracks: "v1/recommendations",
+  search: "v1/search",
+  playlistByID: (playlistID) => `v1/playlists/${playlistID}/tracks`,
   getTracksByArtistID: (artistID) =>
     `v1/artists/${artistID}/top-tracks?market=ES`,
 };
@@ -42,6 +44,25 @@ async function getRecommendedTracks(token, trackIDs) {
   });
 }
 
+async function getPlaylistByID(token, playlistID) {
+  return API_INSTANCE.get(API_PATHS.playlistByID(playlistID), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    // params: { q: "your top songs", type: "playlist", limit: 10, offset: 0 },
+  });
+}
+
+async function searchTopSongsPlaylist(token) {
+  // Endpoint reference : https://developer.spotify.com/documentation/web-api/reference/get-users-top-artists-and-tracks
+  return API_INSTANCE.get(API_PATHS.search, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    params: { q: "your top songs", type: "playlist", limit: 10, offset: 0 },
+  });
+}
+
 async function getArtistTracks(token, artistID) {
   console.log("Fectching Tracks for artist: ", artistID);
   // Endpoint reference : https://developer.spotify.com/documentation/web-api/reference/get-users-top-artists-and-tracks
@@ -53,16 +74,16 @@ async function getArtistTracks(token, artistID) {
   });
 }
 
-async function fetchArtists(token, artistID) {
-  console.log("Fectching Tracks for artist: ", artistID);
-  // Endpoint reference : https://developer.spotify.com/documentation/web-api/reference/get-users-top-artists-and-tracks
-  return API_INSTANCE.get(API_PATHS.getTracksByArtistID(artistID), {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    // params: { seed_tracks: trackIDs.join(","), limit: 20 },
-  });
-}
+// async function fetchArtists(token, artistID) {
+//   console.log("Fectching Tracks for artist: ", artistID);
+//   // Endpoint reference : https://developer.spotify.com/documentation/web-api/reference/get-users-top-artists-and-tracks
+//   return API_INSTANCE.get(API_PATHS.getTracksByArtistID(artistID), {
+//     headers: {
+//       Authorization: `Bearer ${token}`,
+//     },
+//     // params: { seed_tracks: trackIDs.join(","), limit: 20 },
+//   });
+// }
 
 app.get("/tracks/artists", (req, res) => {
   try {
@@ -172,6 +193,76 @@ app.post("/recommend", (req, res) => {
   } catch (e) {
     // console.log("Error: " + e);
     res.send({ data: null });
+  }
+});
+
+app.get("/forgotten-playlists", async (req, res) => {
+  try {
+    console.log("Fetching playlists");
+    const accessToken = req.query.accessToken;
+
+    const playlists = await searchTopSongsPlaylist(accessToken);
+
+    // const {playlists} = playlists.data.playlists
+
+    const playlistData = playlists.data.playlists.items;
+
+    const filteredTopPlaylists = playlistData.filter(
+      (item) =>
+        item.name.toLowerCase()?.includes("your top songs") &&
+        item.owner.display_name === "Spotify"
+    );
+
+    console.log("Found filtered playlists: ");
+    console.log("Fetching data against each playlist");
+    const playlistTracks = await Promise.all(
+      filteredTopPlaylists.map(async (currentPlaylist) => {
+        const { id: playlistID, name } = currentPlaylist;
+        const response = await getPlaylistByID(accessToken, playlistID);
+        console.log(response.data.items);
+
+        // const reducedItems = response.data.items.reduce((track) => {
+        //   console.log(
+        //     "\n\n\n\n\n-------------Track----------\n\n\n\n\n",
+        //     track
+        //   );
+        //   // const { available_markets, ...rest } = track.track;
+
+        //   // return { ...rest };
+        // });
+        return {
+          name: name,
+          tracks: response.data.items.map((track) => track.track),
+        };
+      })
+    );
+
+    fs.writeFile(
+      "jsonPlaylists.json",
+      JSON.stringify(playlistTracks),
+      (err) => {
+        if (err) throw err;
+        console.log("The file was saved!");
+      }
+    );
+    // console.log("Final playlist data: " + JSONplaylistTracks);
+
+    res.json(playlistTracks);
+
+    // .then((response) => {
+    //   // console.log("received data", data);
+    //   // console.log(response.data);
+    //   // return { data: data };
+    //   console.log("Here");
+    //   console.log("Sending back response data for recent tracks");
+    //
+    // })
+    // .catch((e) => {
+    //   console.log("Error fetching top tracks: " + e);
+    // });
+  } catch (e) {
+    console.log("Error fetching playlist information: ", e);
+    res.json({ data: null });
   }
 });
 
